@@ -239,6 +239,28 @@ class XOS:
 
                 return None
             
+    async def perform_draw(self, token: str, proxy=None, retries=5):
+        url = "https://api.x.ink/v1/draw"
+        headers = {
+            **self.headers,
+            "authorization": f"Bearer {token}",
+            "Content-Length": "2",
+            "Content-Type": "application/json"
+        }
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
+                    async with session.post(url=url, headers=headers, json={}) as response:
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return None
+            
     async def process_get_nonce(self, address: str, use_proxy: bool):
         proxy = self.get_next_proxy_for_account(address) if use_proxy else None
         message = None
@@ -288,9 +310,11 @@ class XOS:
             )
 
             balance = "N/A"
+            current_draw = 0
             user = await self.user_data(token, proxy)
             if user:
                 balance = user.get("points", 0)
+                current_draw = user.get("currentDraws", 0)
 
             self.log(
                 f"{Fore.CYAN + Style.BRIGHT}Balance :{Style.RESET_ALL}"
@@ -326,6 +350,41 @@ class XOS:
                         f"{Fore.CYAN + Style.BRIGHT}Check-In:{Style.RESET_ALL}"
                         f"{Fore.RED + Style.BRIGHT} Unknown Error {Style.RESET_ALL}"
                     )
+
+            if current_draw > 0:
+                self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}Draw    :{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {current_draw} {Style.RESET_ALL}"
+                    f"{Fore.GREEN + Style.BRIGHT}Available{Style.RESET_ALL}"
+                )
+
+                count = 0
+                while current_draw > 0:
+                    count += 1
+
+                    draw = await self.perform_draw(token, proxy)
+                    if draw.get("message") == "Draw successful":
+                        reward = draw['pointsEarned']
+                        self.log(
+                            f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {count} {Style.RESET_ALL}"
+                            f"{Fore.GREEN + Style.BRIGHT}Success{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Reward{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {reward} PTS {Style.RESET_ALL}"
+                        )
+                    else:
+                        self.log(
+                            f"{Fore.MAGENTA + Style.BRIGHT}    >{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {count} {Style.RESET_ALL}"
+                            f"{Fore.RED + Style.BRIGHT}Failed{Style.RESET_ALL}"
+                        )
+                        break
+            else:
+                self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}Draw    :{Style.RESET_ALL}"
+                    f"{Fore.YELLOW + Style.BRIGHT} No Available {Style.RESET_ALL}"
+                )
 
     async def main(self):
         try:
