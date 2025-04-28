@@ -7,6 +7,7 @@ from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from eth_utils import to_hex
 from datetime import datetime
 from colorama import *
 import asyncio, json, os, pytz
@@ -25,6 +26,8 @@ class XOS:
             "Sec-Fetch-Site": "same-site",
             "User-Agent": FakeUserAgent().random
         }
+        self.BASE_API = "https://api.x.ink/v1"
+        self.ref_code = "1V7NKQ" # U can change it with yours.
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
@@ -112,6 +115,7 @@ class XOS:
         try:
             account = Account.from_key(account)
             address = account.address
+
             return address
         except Exception as e:
             return None
@@ -120,16 +124,18 @@ class XOS:
         try:
             encoded_message = encode_defunct(text=message)
             signed_message = Account.sign_message(encoded_message, private_key=account)
-            signature = signed_message.signature.hex()
+            signature = to_hex(signed_message.signature)
+
             payload = {
-                "walletAddress": address,
-                "signMessage": message,
-                "signature": f"0x{signature}",
-                "referrer": "1V7NKQ"
+                "walletAddress":address,
+                "signMessage":message,
+                "signature":signature,
+                "referrer":self.ref_code
             }
+            
             return payload
         except Exception as e:
-            return None
+            return self.log(str(e))
     
     def mask_account(self, account):
         mask_account = account[:6] + '*' * 6 + account[-6:]
@@ -157,7 +163,7 @@ class XOS:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
 
     async def get_message(self, address: str, proxy=None, retries=5):
-        url = f"https://api.x.ink/v1/get-sign-message2?walletAddress={address}"
+        url = f"{self.BASE_API}/get-sign-message2?walletAddress={address}"
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
@@ -170,11 +176,10 @@ class XOS:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                
                 return None
     
     async def verify_signature(self, account: str, address: str, message: str, proxy=None, retries=5):
-        url = "https://api.x.ink/v1/verify-signature2"
+        url = f"{self.BASE_API}/verify-signature2"
         data = json.dumps(self.generate_payload(account, address, message))
         headers = {
             **self.headers,
@@ -193,11 +198,10 @@ class XOS:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
                 return None
     
     async def user_data(self, token: str, proxy=None, retries=5):
-        url = "https://api.x.ink/v1/me"
+        url = f"{self.BASE_API}/me"
         headers = {
             **self.headers,
             "authorization": f"Bearer {token}"
@@ -214,11 +218,10 @@ class XOS:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-                
                 return None
             
     async def claim_checkin(self, token: str, proxy=None, retries=5):
-        url = "https://api.x.ink/v1/check-in"
+        url = f"{self.BASE_API}/check-in"
         headers = {
             **self.headers,
             "authorization": f"Bearer {token}",
@@ -236,11 +239,10 @@ class XOS:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
                 return None
             
     async def perform_draw(self, token: str, proxy=None, retries=5):
-        url = "https://api.x.ink/v1/draw"
+        url = f"{self.BASE_API}/draw"
         headers = {
             **self.headers,
             "authorization": f"Bearer {token}",
@@ -258,7 +260,6 @@ class XOS:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
                     continue
-
                 return None
             
     async def process_get_nonce(self, address: str, use_proxy: bool):
